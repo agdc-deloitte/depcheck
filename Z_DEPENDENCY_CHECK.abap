@@ -42,11 +42,51 @@ TYPE-POOLS:
 CLASS LCL_VERIFICABLE DEFINITION DEFERRED.
 
 ***********************************************************************
+* Clase contenedor de los parámetros de selección.
+***********************************************************************
+CLASS LCL_FILTROS DEFINITION.
+
+  PUBLIC SECTION.
+
+    CLASS-DATA:
+      LR_OBJ_NAME TYPE RANGE OF E071-OBJ_NAME.
+
+ENDCLASS.                    "LCL_FILTROS DEFINITION
+
+***********************************************************************
+* Clase encargada de mostrar las dependencias en un arbol.
+***********************************************************************
+CLASS lcl_alv_tree DEFINITION.
+
+  PUBLIC SECTION.
+
+    TYPES:
+      BEGIN OF TY_S_LINEA_TREE,
+        TIPO TYPE STRING,
+        NOMBRE TYPE STRING,
+      END OF TY_S_LINEA_TREE.
+
+
+    CLASS-METHODS:
+
+      ADD_VERIFICABLE
+        IMPORTING
+          IR_nodes type ref to cl_salv_nodes
+          IV_CLAVE_NODO_PADRE type salv_de_node_key
+          IR_VERIFICABLE TYPE REF TO LCL_VERIFICABLE,
+
+      mostrar_dependencias
+        IMPORTING
+          IV_VERIFICABLE TYPE REF TO LCL_VERIFICABLE.
+
+ENDCLASS.                    "lcl_alv_tree DEFINITION
+
+***********************************************************************
 * Clase abstracta de la cual heredaran todos los objetos a ser
 * verificados.
 * Patron Composite utilizado para modelar arbol de dependencias.
 ***********************************************************************
-CLASS LCL_VERIFICABLE DEFINITION ABSTRACT.
+CLASS LCL_VERIFICABLE DEFINITION ABSTRACT FRIENDS LCL_ALV_TREE.
 
   PUBLIC SECTION.
 
@@ -66,14 +106,19 @@ CLASS LCL_VERIFICABLE DEFINITION ABSTRACT.
 
       GET_KEY
         RETURNING
-          VALUE(EV_RESULT) TYPE LCL_VERIFICABLE=>TY_V_KEY.
+          VALUE(EV_RESULT) TYPE LCL_VERIFICABLE=>TY_V_KEY,
+
+      GET_LINEA_TREE ABSTRACT
+        RETURNING
+          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+
 
   PROTECTED SECTION.
 
     DATA:
           LT_DEPENDENCIAS TYPE TY_T_VERIFICABLES.
 
-ENDCLASS.
+ENDCLASS.                    "LCL_VERIFICABLE DEFINITION
 
 ***********************************************************************
 * Clase que modela una orden de transporte.
@@ -89,21 +134,42 @@ CLASS LCL_ORDEN_TRANSPORTE DEFINITION INHERITING FROM LCL_VERIFICABLE.
 
       SELECT_DEPENDENCIAS REDEFINITION,
 
-      GET_KEY REDEFINITION.
+      GET_KEY REDEFINITION,
+
+      GET_LINEA_TREE REDEFINITION.
+
 
   PROTECTED SECTION.
 
     DATA:
           LV_NUMERO_ORDEN TYPE E070-TRKORR.
 
-ENDCLASS.
+ENDCLASS.                    "LCL_ORDEN_TRANSPORTE DEFINITION
 
 ***********************************************************************
 * Clase que modela los objetos que pueden estar en una orden de
 * transporte.
 ***********************************************************************
-CLASS LCL_OBJETO_ORDEN DEFINITION INHERITING FROM LCL_VERIFICABLE
-  ABSTRACT.
+***********************************************************************
+* @doc:
+* Esta clase debe ser heredada en caso de querer agregar un nuevo tipo
+* de objeto a ser verificado por este programa.
+* Es tan simple como heredar de la clase LCL_OBJETO_ORDEN y redefinir
+* el método SELECT_DEPENDENCIAS. En la redefinición de dicho método
+* se debería llamar a super->SELECT_DEPENDENCIAS( ) y luego agregar al
+* atributo me->LT_DEPENDENCIAS las dependencias que tenga el nuevo
+* tipo de objeto. Recuerde que para identificar el objeto que está
+* tratando cuenta con el atributo
+* me->LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+* Un ejemplo de clase heredera es la clase LCL_PROGRAMA que tal cual
+* está aqui documentado redefine simplemente el método
+* SELECT_DEPENDENCIAS.
+* IMPORTANTE: Para que su clase sea instanciada y utilizada para
+* analizar las dependencias de un objeto, debe registrar su
+* instanciación en el método LCL_OBJETO_ORDEN=>FACTORY. En dicho
+* método se explica y ejemplifica como realizar el registro.
+***********************************************************************
+CLASS LCL_OBJETO_ORDEN DEFINITION INHERITING FROM LCL_VERIFICABLE.
 
   PUBLIC SECTION.
 
@@ -125,7 +191,9 @@ CLASS LCL_OBJETO_ORDEN DEFINITION INHERITING FROM LCL_VERIFICABLE
 
       GET_KEY REDEFINITION,
 
-      SELECT_DEPENDENCIAS REDEFINITION.
+      SELECT_DEPENDENCIAS REDEFINITION,
+
+      GET_LINEA_TREE REDEFINITION.
 
     CLASS-METHODS:
 
@@ -134,19 +202,31 @@ CLASS LCL_OBJETO_ORDEN DEFINITION INHERITING FROM LCL_VERIFICABLE
           TY_S_IDENTIFICACION_OBJETO
         RETURNING
           VALUE(EV_RESULT) TYPE REF TO LCL_OBJETO_ORDEN,
-      
+
       CREAR_Y_AGREGAR_OBJETOS_TABLA
         IMPORTING
-          IV_OBJ_NAME TYPE E071-OBJ_NAME
+          IV_OBJ_NAME TYPE CSEQUENCE
         CHANGING
-          CT_VERIFICABLES TYPE LCL_VERIFICABLES=>TY_T_VERIFICABLES.
+          CT_VERIFICABLES TYPE LCL_VERIFICABLE=>TY_T_VERIFICABLES,
+
+      CREAR_Y_AGREGAR_OBJ_ELEM_DATOS
+        IMPORTING
+          IV_OBJ_NAME TYPE CSEQUENCE
+        CHANGING
+          CT_VERIFICABLES TYPE LCL_VERIFICABLE=>TY_T_VERIFICABLES,
+
+      CREAR_Y_AGREGAR_OBJETO_DOMINIO
+        IMPORTING
+          IV_OBJ_NAME TYPE CSEQUENCE
+        CHANGING
+          CT_VERIFICABLES TYPE LCL_VERIFICABLE=>TY_T_VERIFICABLES.
 
   PROTECTED SECTION.
 
     DATA:
           LS_IDENTIFICACION_OBJETO TYPE TY_S_IDENTIFICACION_OBJETO.
 
-ENDCLASS.
+ENDCLASS.                    "LCL_OBJETO_ORDEN DEFINITION
 
 ***********************************************************************
 * Clase que modela un programa ABAP.
@@ -157,9 +237,11 @@ CLASS LCL_PROGRAMA DEFINITION INHERITING FROM LCL_OBJETO_ORDEN.
 
     METHODS:
 
-      SELECT_DEPENDENCIAS REDEFINITION.
+      SELECT_DEPENDENCIAS REDEFINITION,
 
-ENDCLASS.
+      GET_LINEA_TREE REDEFINITION.
+
+ENDCLASS.                    "LCL_PROGRAMA DEFINITION
 
 ***********************************************************************
 * Clase que modela una tabla de diccionario.
@@ -170,9 +252,11 @@ CLASS LCL_TABLA DEFINITION INHERITING FROM LCL_OBJETO_ORDEN.
 
     METHODS:
 
-      SELECT_DEPENDENCIAS REDEFINITION.
+      SELECT_DEPENDENCIAS REDEFINITION,
 
-ENDCLASS.
+      GET_LINEA_TREE REDEFINITION.
+
+ENDCLASS.                    "LCL_TABLA DEFINITION
 
 ***********************************************************************
 * Clase utilizada para llevar un control de las dependencias que ya
@@ -209,7 +293,7 @@ CLASS LCL_MANEJADOR_DEPENDENCIAS DEFINITION.
     CLASS-DATA:
       LV_INSTANCE TYPE REF TO LCL_MANEJADOR_DEPENDENCIAS.
 
-ENDCLASS.
+ENDCLASS.                    "LCL_MANEJADOR_DEPENDENCIAS DEFINITION
 
 ***********************************************************************
 * Implementación de clases
@@ -219,13 +303,13 @@ CLASS LCL_MANEJADOR_DEPENDENCIAS IMPLEMENTATION.
 
   METHOD CLASS_CONSTRUCTOR.
     CREATE OBJECT LCL_MANEJADOR_DEPENDENCIAS=>LV_INSTANCE.
-  ENDMETHOD.
+  ENDMETHOD.                    "CLASS_CONSTRUCTOR
 
   METHOD GET_INSTANCE.
 *    RETURNING
 *      VALUE(EV_RESULT) TYPE REF TO LCL_MANEJADOR_DEPENDENCIAS.
     EV_RESULT = LCL_MANEJADOR_DEPENDENCIAS=>LV_INSTANCE.
-  ENDMETHOD.
+  ENDMETHOD.                    "GET_INSTANCE
 
   METHOD VERIFICADO.
 *    IMPORTING
@@ -253,13 +337,111 @@ CLASS LCL_MANEJADOR_DEPENDENCIAS IMPLEMENTATION.
       EV_RETURN = ABAP_FALSE.
       " ...y se lo agrega a los objetos verificados para que la próxima
       " vez aparezca como verificado.
-      INSERT LV_KEY INTO ME->LT_VERIFICADOS.
+      INSERT LV_KEY INTO TABLE ME->LT_VERIFICADOS.
+      OPEN DATASET '/tmp/Z_DEPENDENCY_CHECK' FOR APPENDING ENCODING DEFAULT IN TEXT MODE.
+      TRANSFER LV_KEY to '/tmp/Z_DEPENDENCY_CHECK'.
+      CLOSE DATASET '/tmp/Z_DEPENDENCY_CHECK'.
     ENDIF.
+
+  ENDMETHOD.                    "VERIFICADO
+
+ENDCLASS.                    "LCL_MANEJADOR_DEPENDENCIAS IMPLEMENTATION
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_alv_tree IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+CLASS lcl_alv_tree IMPLEMENTATION.
+
+  METHOD ADD_VERIFICABLE.
+*        IMPORTING
+*          IR_nodes type ref to cl_salv_nodes
+*          IV_CLAVE_NODO_PADRE type salv_de_node_key
+*          IR_VERIFICABLE TYPE REF TO LCL_VERIFICABLE,
+
+    FIELD-SYMBOLS:
+      <LR_VERIFICABLE> TYPE REF TO LCL_VERIFICABLE.
+
+    DATA:
+      Lr_node TYPE REF TO cl_salv_node,
+      LS_LINEA_TREE TYPE TY_S_LINEA_TREE,
+      LV_CLAVE type salv_de_node_key.
+
+    LR_node = IR_nodes->add_node(
+      related_node = IV_CLAVE_NODO_PADRE
+      relationship = cl_gui_column_tree=>relat_LAST_child
+      ).
+
+    LS_LINEA_TREE = IR_VERIFICABLE->GET_LINEA_TREE( ).
+
+    LR_node->set_data_row( LS_LINEA_TREE ).
+
+    LV_CLAVE = LR_node->get_key( ).
+
+    LOOP AT IR_VERIFICABLE->LT_DEPENDENCIAS ASSIGNING <LR_VERIFICABLE>.
+
+      ADD_VERIFICABLE(
+        EXPORTING
+          IR_nodes = IR_nodes
+          IV_CLAVE_NODO_PADRE = LV_CLAVE
+          IR_VERIFICABLE = <LR_VERIFICABLE>
+        ).
+
+    ENDLOOP.
 
   ENDMETHOD.
 
-ENDCLASS.
+  METHOD mostrar_dependencias.
+*        IMPORTING
+*          IV_VERIFICABLE TYPE REF TO LCL_VERIFICABLE.
 
+    data:
+      Lr_tree type ref to cl_salv_tree,
+      LT_SALIDA TYPE STANDARD TABLE OF TY_S_LINEA_TREE,
+      LR_nodes type ref to cl_salv_nodes,
+      LV_key type salv_de_node_key..
+
+    cl_salv_tree=>factory(
+      IMPORTING
+        R_SALV_TREE = Lr_tree
+      changing
+        t_table      = LT_SALIDA
+      ).
+
+    LR_nodes = Lr_tree->get_nodes( ).
+
+    ADD_VERIFICABLE(
+      EXPORTING
+        IR_nodes = LR_nodes
+        IV_CLAVE_NODO_PADRE = LV_key
+        IR_VERIFICABLE = IV_VERIFICABLE
+      ).
+
+    DATA:
+      LR_columns type ref to cl_salv_columns.
+
+    LR_columns = Lr_tree->get_columns( ).
+    LR_columns->set_optimize( abap_true ).
+
+    data:
+      lR_funciones type ref to CL_SALV_FUNCTIONS_TREE.
+
+*   Se setean todas las funciones del ALV
+    lR_funciones = Lr_tree->get_functions( ).
+    lR_funciones->set_all( ).
+
+    Lr_tree->display( ).
+
+  ENDMETHOD.                    "mostrar_dependencias
+
+ENDCLASS.                    "lcl_alv_tree IMPLEMENTATION
+
+*----------------------------------------------------------------------*
+*       CLASS LCL_VERIFICABLE IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
 CLASS LCL_VERIFICABLE IMPLEMENTATION.
 
   METHOD VERIFICAR.
@@ -277,7 +459,7 @@ CLASS LCL_VERIFICABLE IMPLEMENTATION.
 
     ENDLOOP.
 
-  ENDMETHOD.
+  ENDMETHOD.                    "VERIFICAR
 
   METHOD VERIFICADO.
 
@@ -288,7 +470,7 @@ CLASS LCL_VERIFICABLE IMPLEMENTATION.
 
     EV_RESULT = LV_MR->VERIFICADO( ME ).
 
-  ENDMETHOD.
+  ENDMETHOD.                    "VERIFICADO
 
   METHOD GET_KEY.
 
@@ -301,10 +483,15 @@ CLASS LCL_VERIFICABLE IMPLEMENTATION.
 
     EV_RESULT = LV_CLASS_NAME.
 
-  ENDMETHOD.
+  ENDMETHOD.                    "GET_KEY
 
-ENDCLASS.
+ENDCLASS.                    "LCL_VERIFICABLE IMPLEMENTATION
 
+*----------------------------------------------------------------------*
+*       CLASS LCL_ORDEN_TRANSPORTE IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
 CLASS LCL_ORDEN_TRANSPORTE IMPLEMENTATION.
 
   METHOD CONSTRUCTOR.
@@ -314,7 +501,7 @@ CLASS LCL_ORDEN_TRANSPORTE IMPLEMENTATION.
 
     ME->LV_NUMERO_ORDEN = IV_NUMERO_ORDEN.
 
-  ENDMETHOD.
+  ENDMETHOD.                    "CONSTRUCTOR
 
   METHOD SELECT_DEPENDENCIAS.
 
@@ -325,6 +512,7 @@ CLASS LCL_ORDEN_TRANSPORTE IMPLEMENTATION.
         LCL_OBJETO_ORDEN=>TY_S_IDENTIFICACION_OBJETO.
 
     DATA:
+      LV_DEPENDENCIA TYPE REF TO LCL_VERIFICABLE,
       LT_ORDENES_HIJO TYPE STANDARD TABLE OF E070-TRKORR,
       LT_OBJETOS_ORDEN TYPE
         LCL_OBJETO_ORDEN=>TY_T_IDENTIFICACION_OBJETOS.
@@ -342,9 +530,11 @@ CLASS LCL_ORDEN_TRANSPORTE IMPLEMENTATION.
       APPEND INITIAL LINE TO ME->LT_DEPENDENCIAS ASSIGNING
         <LV_DEPENDENCIA>.
 
-      CREATE OBJECT <LV_DEPENDENCIA> TYPE LCL_ORDEN_TRANSPORTE
+      CREATE OBJECT <LV_DEPENDENCIA>
+        TYPE
+          LCL_ORDEN_TRANSPORTE
         EXPORTING
-          IV_NUMERO_ORDEN = <LV_ORDEN>.
+          IV_NUMERO_ORDEN      = <LV_ORDEN>.
 
     ENDLOOP.
 
@@ -352,20 +542,25 @@ CLASS LCL_ORDEN_TRANSPORTE IMPLEMENTATION.
     SELECT PGMID OBJECT OBJ_NAME
     FROM E071
     INTO TABLE LT_OBJETOS_ORDEN
-    WHERE TRKORR EQ ME->LV_NUMERO_ORDEN.
+    WHERE
+      TRKORR EQ ME->LV_NUMERO_ORDEN AND
+      OBJ_NAME IN LCL_FILTROS=>LR_OBJ_NAME.
 
     LOOP AT LT_OBJETOS_ORDEN ASSIGNING <LS_OBJETO_ORDEN>.
 
-      APPEND INITIAL LINE TO ME->LT_DEPENDENCIAS ASSIGNING
-        <LV_DEPENDENCIA>.
-
-      <LV_DEPENDENCIA> = LCL_OBJETO_ORDEN=>FACTORY(
+      LV_DEPENDENCIA = LCL_OBJETO_ORDEN=>FACTORY(
         <LS_OBJETO_ORDEN>
         ).
 
+      IF LV_DEPENDENCIA IS NOT INITIAL.
+
+        APPEND LV_DEPENDENCIA TO ME->LT_DEPENDENCIAS.
+
+      ENDIF.
+
     ENDLOOP.
 
-  ENDMETHOD.
+  ENDMETHOD.                    "SELECT_DEPENDENCIAS
 
   METHOD GET_KEY.
 
@@ -377,10 +572,22 @@ CLASS LCL_ORDEN_TRANSPORTE IMPLEMENTATION.
       ME->LV_NUMERO_ORDEN
     INTO EV_RESULT.
 
+  ENDMETHOD.                    "GET_KEY
+
+  METHOD GET_LINEA_TREE.
+*        RETURNING
+*          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+    LS_RESULT-TIPO = 'Orden de transporte'.
+    LS_RESULT-NOMBRE = LV_NUMERO_ORDEN.
   ENDMETHOD.
 
-ENDCLASS.
+ENDCLASS.                    "LCL_ORDEN_TRANSPORTE IMPLEMENTATION
 
+*----------------------------------------------------------------------*
+*       CLASS LCL_OBJETO_ORDEN IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
 CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
 
   METHOD CONSTRUCTOR.
@@ -390,7 +597,7 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
     SUPER->CONSTRUCTOR( ).
 
     ME->LS_IDENTIFICACION_OBJETO = IS_IDENTIFICACION_OBJETO.
-  ENDMETHOD.
+  ENDMETHOD.                    "CONSTRUCTOR
 
   METHOD GET_KEY.
 
@@ -406,7 +613,7 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
     SEPARATED BY
       '-'.
 
-  ENDMETHOD.
+  ENDMETHOD.                    "GET_KEY
 
   METHOD FACTORY.
 *    IMPORTING IS_IDENTIFICACION_OBJETO TYPE
@@ -414,8 +621,25 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
 *    RETURNING
 *      VALUE(EV_RESULT) TYPE REF TO LCL_OBJETO_ORDEN.
 
-    " @todo Implementar: Crear instancia según la identificación del
-    " objeto de la orden.
+***********************************************************************
+* @doc:
+* Cada TIPO de objeto en una orden de transporte se identifica
+* por 2 campos:
+* 1) IS_IDENTIFICACION_OBJETO-PGMID: Ejemplo de valores R3TR, LIMU,
+*    etc.
+* 2) IS_IDENTIFICACION_OBJETO-OBJECT: Ejemplos de valores PROG, TABL,
+*    etc.
+* Para agregar un nuevo tipo de objeto a ser verificado por este
+* programa, se debe instanciar en este método la clase que modela dicho
+* tipo en función de los campos IS_IDENTIFICACION_OBJETO-PGMID,
+* IS_IDENTIFICACION_OBJETO-OBJECT.
+* La clase de la cual se desea crear una instancia debe ser heredera
+* de la clase LCL_OBJETO_ORDEN.
+* Por ejemplo, si IS_IDENTIFICACION_OBJETO-PGMID eq 'R3T3' y
+* IS_IDENTIFICACION_OBJETO-OBJECT eq 'PROG', entonces se instancia la
+* clase LCL_PROGRAMA
+***********************************************************************
+
     CLEAR EV_RESULT.
 
     CASE IS_IDENTIFICACION_OBJETO-PGMID.
@@ -425,16 +649,30 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
         CASE IS_IDENTIFICACION_OBJETO-OBJECT.
 
           WHEN 'PROG'.
-            CREATE OBJECT EV_RESULT TYPE LCL_PROGRAMA
+            CREATE OBJECT EV_RESULT
+              TYPE
+                LCL_PROGRAMA
               EXPORTING
                 IS_IDENTIFICACION_OBJETO = IS_IDENTIFICACION_OBJETO.
-            
+
           WHEN 'TABL'.
-            CREATE OBJECT EV_RESULT TYPE LCL_TABLA
+            CREATE OBJECT EV_RESULT
+              TYPE
+                LCL_TABLA
+              EXPORTING
+                IS_IDENTIFICACION_OBJETO = IS_IDENTIFICACION_OBJETO.
+
+          WHEN 'DTEL' "Elemento de datos
+            OR 'DOMA'. "Dominio
+
+            CREATE OBJECT EV_RESULT
+              TYPE
+                LCL_OBJETO_ORDEN
               EXPORTING
                 IS_IDENTIFICACION_OBJETO = IS_IDENTIFICACION_OBJETO.
 
           WHEN OTHERS.
+
             RETURN.
 
         ENDCASE.
@@ -444,56 +682,102 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
         CASE IS_IDENTIFICACION_OBJETO-OBJECT.
 
           WHEN 'REPS'.
-            CREATE OBJECT EV_RESULT TYPE LCL_PROGRAMA
+            CREATE OBJECT EV_RESULT
+              TYPE
+                LCL_PROGRAMA
               EXPORTING
                 IS_IDENTIFICACION_OBJETO = IS_IDENTIFICACION_OBJETO.
 
           WHEN 'TABT' OR 'TABD'.
-            CREATE OBJECT EV_RESULT TYPE LCL_TABLA
+            CREATE OBJECT EV_RESULT
+              TYPE
+                LCL_TABLA
               EXPORTING
                 IS_IDENTIFICACION_OBJETO = IS_IDENTIFICACION_OBJETO.
 
           WHEN OTHERS.
+
             RETURN.
 
         ENDCASE.
 
       WHEN OTHERS.
+
         RETURN.
 
     ENDCASE.
 
-  ENDMETHOD.
+  ENDMETHOD.                    "FACTORY
 
   METHOD CREAR_Y_AGREGAR_OBJETOS_TABLA.
 *    IMPORTING
-*      IV_OBJ_NAME TYPE E071-OBJ_NAME
+*      IV_OBJ_NAME TYPE CSEQUENCE
 *    CHANGING
 *      CT_VERIFICABLES TYPE LCL_VERIFICABLES=>TY_T_VERIFICABLES.
-    
+
     FIELD-SYMBOLS:
       <LV_VERIFICABLE> TYPE REF TO LCL_VERIFICABLE.
-    
+
     DATA:
       LS_IDENTIFICACION_OBJETO TYPE TY_S_IDENTIFICACION_OBJETO.
-    
-    LS_IDENTIFICACION_OBJETO-OBJ_NAME = IV_OBJ_NAME.
-    
-    IS_IDENTIFICACION_OBJETO-PGMID = 'R3TR'.
-    IS_IDENTIFICACION_OBJETO-OBJECT = 'TABL'.
-    APPEND INITIAL LINE TO CT_VERIFICABLES ASSIGNING <LV_VERIFICABLE>.
-    <LV_VERIFICABLE> = FACTORY( IS_IDENTIFICACION_OBJETO ).
-    
-    IS_IDENTIFICACION_OBJETO-PGMID = 'LIMU'.
-    IS_IDENTIFICACION_OBJETO-OBJECT = 'TABT'.
-    APPEND INITIAL LINE TO CT_VERIFICABLES ASSIGNING <LV_VERIFICABLE>.
-    <LV_VERIFICABLE> = FACTORY( IS_IDENTIFICACION_OBJETO ).
-.
-    IS_IDENTIFICACION_OBJETO-OBJECT = 'TABD'.
-    APPEND INITIAL LINE TO CT_VERIFICABLES ASSIGNING <LV_VERIFICABLE>.
-    <LV_VERIFICABLE> = FACTORY( IS_IDENTIFICACION_OBJETO ).
 
-  ENDMETHOD.
+    LS_IDENTIFICACION_OBJETO-OBJ_NAME = IV_OBJ_NAME.
+
+    LS_IDENTIFICACION_OBJETO-PGMID = 'R3TR'.
+    LS_IDENTIFICACION_OBJETO-OBJECT = 'TABL'.
+    APPEND INITIAL LINE TO CT_VERIFICABLES ASSIGNING <LV_VERIFICABLE>.
+    <LV_VERIFICABLE> = FACTORY( LS_IDENTIFICACION_OBJETO ).
+
+    LS_IDENTIFICACION_OBJETO-PGMID = 'LIMU'.
+    LS_IDENTIFICACION_OBJETO-OBJECT = 'TABT'.
+    APPEND INITIAL LINE TO CT_VERIFICABLES ASSIGNING <LV_VERIFICABLE>.
+    <LV_VERIFICABLE> = FACTORY( LS_IDENTIFICACION_OBJETO ).
+    .
+    LS_IDENTIFICACION_OBJETO-OBJECT = 'TABD'.
+    APPEND INITIAL LINE TO CT_VERIFICABLES ASSIGNING <LV_VERIFICABLE>.
+    <LV_VERIFICABLE> = FACTORY( LS_IDENTIFICACION_OBJETO ).
+
+  ENDMETHOD.                    "CREAR_Y_AGREGAR_OBJETOS_TABLA
+
+  METHOD CREAR_Y_AGREGAR_OBJ_ELEM_DATOS.
+*          IMPORTING
+*            IV_OBJ_NAME TYPE CSEQUENCE
+*          CHANGING
+*            CT_VERIFICABLES TYPE LCL_VERIFICABLES=>TY_T_VERIFICABLES,
+    FIELD-SYMBOLS:
+      <LV_VERIFICABLE> TYPE REF TO LCL_VERIFICABLE.
+
+    DATA:
+      LS_IDENTIFICACION_OBJETO TYPE TY_S_IDENTIFICACION_OBJETO.
+
+    LS_IDENTIFICACION_OBJETO-OBJ_NAME = IV_OBJ_NAME.
+
+    LS_IDENTIFICACION_OBJETO-PGMID = 'R3TR'.
+    LS_IDENTIFICACION_OBJETO-OBJECT = 'DTEL'.
+    APPEND INITIAL LINE TO CT_VERIFICABLES ASSIGNING <LV_VERIFICABLE>.
+    <LV_VERIFICABLE> = FACTORY( LS_IDENTIFICACION_OBJETO ).
+
+  ENDMETHOD.                    "CREAR_Y_AGREGAR_OBJ_ELEM_DATOS
+
+  METHOD CREAR_Y_AGREGAR_OBJETO_DOMINIO.
+*          IMPORTING
+*            IV_OBJ_NAME TYPE CSEQUENCE
+*          CHANGING
+*            CT_VERIFICABLES TYPE LCL_VERIFICABLES=>TY_T_VERIFICABLES.
+    FIELD-SYMBOLS:
+      <LV_VERIFICABLE> TYPE REF TO LCL_VERIFICABLE.
+
+    DATA:
+      LS_IDENTIFICACION_OBJETO TYPE TY_S_IDENTIFICACION_OBJETO.
+
+    LS_IDENTIFICACION_OBJETO-OBJ_NAME = IV_OBJ_NAME.
+
+    LS_IDENTIFICACION_OBJETO-PGMID = 'R3TR'.
+    LS_IDENTIFICACION_OBJETO-OBJECT = 'DOMA'.
+    APPEND INITIAL LINE TO CT_VERIFICABLES ASSIGNING <LV_VERIFICABLE>.
+    <LV_VERIFICABLE> = FACTORY( LS_IDENTIFICACION_OBJETO ).
+
+  ENDMETHOD.                    "CREAR_Y_AGREGAR_OBJETO_DOMINIO
 
   METHOD SELECT_DEPENDENCIAS.
 
@@ -526,23 +810,38 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
       APPEND INITIAL LINE TO ME->LT_DEPENDENCIAS ASSIGNING
         <LV_DEPENDENCIA>.
 
-      CREATE OBJECT <LV_DEPENDENCIA> TYPE LCL_ORDEN_TRANSPORTE
+      CREATE OBJECT <LV_DEPENDENCIA>
+        TYPE
+          LCL_ORDEN_TRANSPORTE
         EXPORTING
-          IV_NUMERO_ORDEN = <LV_ORDEN>.
+          IV_NUMERO_ORDEN      = <LV_ORDEN>.
 
     ENDLOOP.
 
+  ENDMETHOD.                    "SELECT_DEPENDENCIAS
+
+  METHOD GET_LINEA_TREE.
+*        RETURNING
+*          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+    LS_RESULT-TIPO = 'Objeto orden'.
+    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+
   ENDMETHOD.
 
-ENDCLASS.
+ENDCLASS.                    "LCL_OBJETO_ORDEN IMPLEMENTATION
 
+*----------------------------------------------------------------------*
+*       CLASS LCL_PROGRAMA IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
 CLASS LCL_PROGRAMA IMPLEMENTATION.
 
   METHOD SELECT_DEPENDENCIAS.
 
     FIELD-SYMBOLS:
       <LV_TABNAME> TYPE D010TAB-TABNAME.
-    
+
     DATA:
       LT_TABNAME TYPE STANDARD TABLE OF D010TAB-TABNAME.
 
@@ -551,11 +850,14 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
     SELECT TABNAME
     FROM D010TAB
     INTO TABLE LT_TABNAME
-    WHERE MASTER EQ ME->LS_IDENTIFICACION_OBJETO-OBJ_NAME.
-      
+    WHERE
+      MASTER EQ ME->LS_IDENTIFICACION_OBJETO-OBJ_NAME AND
+* @todo Verificar includes de grupos de funciones
+      TABNAME LIKE 'Z%'.
+
     LOOP AT LT_TABNAME ASSIGNING <LV_TABNAME>.
 
-      LCL_OBJETO_ORDEN=>CREAR_Y_AGREGAR_OBJETOS_TABLA( 
+      LCL_OBJETO_ORDEN=>CREAR_Y_AGREGAR_OBJETOS_TABLA(
         EXPORTING
           IV_OBJ_NAME = <LV_TABNAME>
         CHANGING
@@ -564,18 +866,123 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
 
     ENDLOOP.
 
+    " @todo: Agregar como dependencias a los includes:
+    " Tabla D010INC: A partir de MASTER se obtiene el include.
+
+    " @todo: Agregar como dependencias el programa padre, en caso
+    " de ser un include.
+
+  ENDMETHOD.                    "SELECT_DEPENDENCIAS
+
+  METHOD GET_LINEA_TREE.
+*        RETURNING
+*          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+    LS_RESULT-TIPO = 'Programa'.
+    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+
   ENDMETHOD.
 
-ENDCLASS.
+ENDCLASS.                    "LCL_PROGRAMA IMPLEMENTATION
 
+*----------------------------------------------------------------------*
+*       CLASS LCL_TABLA IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
 CLASS LCL_TABLA IMPLEMENTATION.
 
   METHOD SELECT_DEPENDENCIAS.
-    
+
+    TYPES:
+      BEGIN OF TY_S_DD03L,
+        ROLLNAME TYPE DD03L-ROLLNAME,
+        DOMNAME TYPE DD03L-DOMNAME,
+      END OF TY_S_DD03L.
+
+    FIELD-SYMBOLS:
+      <LS_DD03L> TYPE TY_S_DD03L.
+
+    DATA:
+      LT_DD03L TYPE STANDARD TABLE OF TY_S_DD03L.
+
     SUPER->SELECT_DEPENDENCIAS( ).
-    
+
     " @todo implementar obtencion de elementos de datos y dominios.
+
+    " Tabla DD03L: A partir de TABNAME se pueden obtener ROLLNAME y DOMNAME
+    SELECT ROLLNAME DOMNAME
+    FROM DD03L
+    INTO TABLE LT_DD03L
+    WHERE
+      TABNAME EQ ME->LS_IDENTIFICACION_OBJETO-OBJ_NAME AND
+      ( ROLLNAME LIKE 'Z%' OR
+      DOMNAME LIKE 'Z%' ).
+
+    LOOP AT LT_DD03L ASSIGNING <LS_DD03L>.
+
+      IF <LS_DD03L>-ROLLNAME IS NOT INITIAL.
+
+        LCL_OBJETO_ORDEN=>CREAR_Y_AGREGAR_OBJ_ELEM_DATOS(
+          EXPORTING
+            IV_OBJ_NAME = <LS_DD03L>-ROLLNAME
+          CHANGING
+            CT_VERIFICABLES = ME->LT_DEPENDENCIAS
+          ).
+
+      ENDIF.
+
+      IF <LS_DD03L>-DOMNAME IS NOT INITIAL.
+
+        LCL_OBJETO_ORDEN=>CREAR_Y_AGREGAR_OBJETO_DOMINIO(
+          EXPORTING
+            IV_OBJ_NAME = <LS_DD03L>-ROLLNAME
+          CHANGING
+            CT_VERIFICABLES = ME->LT_DEPENDENCIAS
+          ).
+
+      ENDIF.
+
+    ENDLOOP.
+
+
+  ENDMETHOD.                    "SELECT_DEPENDENCIAS
+
+  METHOD GET_LINEA_TREE.
+*        RETURNING
+*          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+    LS_RESULT-TIPO = 'Tabla'.
+    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
 
   ENDMETHOD.
 
-ENDCLASS.
+ENDCLASS.                    "LCL_TABLA IMPLEMENTATION
+
+* @todo: Agregar tipo de objeto dynpro
+" Tabla D020S: A partir de PROG se obtienen todos los dynpros (DNUM).
+
+TABLES:
+  E071.
+
+PARAMETERS:
+  P_TRKORR TYPE E070-TRKORR.
+SELECT-OPTIONS:
+  S_OBJNAM FOR E071-OBJ_NAME.
+
+DATA:
+      LV_ORDEN_TRANSPORTE TYPE REF TO LCL_ORDEN_TRANSPORTE.
+
+START-OF-SELECTION.
+
+  DELETE DATASET '/tmp/Z_DEPENDENCY_CHECK'.
+
+  LCL_FILTROS=>LR_OBJ_NAME = S_OBJNAM[].
+
+  CREATE OBJECT LV_ORDEN_TRANSPORTE
+    EXPORTING
+      IV_NUMERO_ORDEN = P_TRKORR.
+
+  LV_ORDEN_TRANSPORTE->VERIFICAR( ).
+
+END-OF-SELECTION.
+
+  lcl_alv_tree=>mostrar_dependencias( LV_ORDEN_TRANSPORTE ).
