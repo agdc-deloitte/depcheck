@@ -27,6 +27,52 @@
 * En todos los casos se restringirá para que sean recuperadas órdenes
 * de transporte que no hayan sido transportadas al ambiente A1.
 
+***********************************************************************
+* @doc:
+* ¿Cómo agregar nuevos tipos de objeto para ser verificados?
+* La clase LCL_OBJETO_ORDEN debe ser heredada en caso de querer agregar
+* un nuevo tipo de objeto a ser verificado por este programa.
+* Es tan simple como heredar de la clase LCL_OBJETO_ORDEN y redefinir
+* el método SELECT_DEPENDENCIAS. En la redefinición de dicho método
+* se debería llamar a super->SELECT_DEPENDENCIAS( ) y luego agregar al
+* atributo me->LT_DEPENDENCIAS las dependencias que tenga el nuevo
+* tipo de objeto.
+* Recuerde que para identificar el objeto que está tratando cuenta
+* con el atributo me->LS_IDENTIFICACION_OBJETO-OBJ_NAME, que
+* contendrá el nombre de, por ejemplo el progra, tabla, dominio, etc.
+*
+* Para agregar instancias a me->LT_DEPENDENCIAS debería usar el método
+* FACTORY_COLLECTION_BY_CLASS que simplemente pasando el nombre del
+* objeto a agregar y la clase, se agregarán las instancias que
+* correspondan en me->LT_DEPENDENCIAS. Esto es posible gracias al
+* registro hecho de cada clase (ver más abajo).
+*
+* Un ejemplo de clase heredera es la clase LCL_PROGRAMA que tal cual
+* está aqui documentado redefine simplemente el método
+* SELECT_DEPENDENCIAS.
+*
+* IMPORTANTE: Si redefine el constructor no cambiar la firma!!! La
+* firma debe ser la misma que la definida en la clase LCL_OBJETO_ORDEN.
+*
+* Por último para que el nuevo tipo de objeto se muestre correctamente
+* en el ALV tree debería redefinir el método GET_LINEA_TREE,
+* simplemente indicando una descripción para el tipo de objeto y su
+* nombre.
+*
+* Para que su clase sea tenida en cuenta en la verificación de
+* dependencias deberá registrarla utilizando el método REGISTRAR de la
+* clase LCL_MANEJADOR_TIPOS_OBJETO. Un ejemplo:
+*
+*  LV_MANEJADOR_TIPOS = LCL_MANEJADOR_TIPOS_OBJETO=>GET_INSTANCE( ).
+*
+*  LV_MANEJADOR_TIPOS->REGISTRAR(
+*    IV_PGMID = 'R3TR'
+*    IV_OBJECT = 'PROG'
+*    IV_CLASE_ASOCIADA = 'LCL_PROGRAMA'
+*    ).
+*
+***********************************************************************
+
 REPORT  Z_DEPENDENCY_CHECK.
 
 TYPE-POOLS:
@@ -148,44 +194,6 @@ ENDCLASS.                    "LCL_ORDEN_TRANSPORTE DEFINITION
 * Clase que modela los objetos que pueden estar en una orden de
 * transporte.
 ***********************************************************************
-***********************************************************************
-* @doc:
-* Esta clase debe ser heredada en caso de querer agregar un nuevo tipo
-* de objeto a ser verificado por este programa.
-* Es tan simple como heredar de la clase LCL_OBJETO_ORDEN y redefinir
-* el método SELECT_DEPENDENCIAS. En la redefinición de dicho método
-* se debería llamar a super->SELECT_DEPENDENCIAS( ) y luego agregar al
-* atributo me->LT_DEPENDENCIAS las dependencias que tenga el nuevo
-* tipo de objeto.
-* Recuerde que para identificar el objeto que está tratando cuenta
-* con el atributo me->LS_IDENTIFICACION_OBJETO-OBJ_NAME, que
-* contendrá el nombre de, por ejemplo el progra, tabla, dominio, etc.
-*
-* Para agregar instancias a me->LT_DEPENDENCIAS debería usar el método
-* FACTORY_COLLECTION_BY_CLASS que simplemente pasando el nombre del
-* objeto a agregar y la clase, se agregarán las instancias que
-* correspondan en me->LT_DEPENDENCIAS. Esto es posible gracias al
-* registro hecho de cada clase (ver más abajo).
-*
-* Un ejemplo de clase heredera es la clase LCL_PROGRAMA que tal cual
-* está aqui documentado redefine simplemente el método
-* SELECT_DEPENDENCIAS.
-*
-* IMPORTANTE: Si redefine el constructor no cambiar la firma!!! La
-* firma debe ser la misma que la definida en la clase LCL_OBJETO_ORDEN.
-*
-* Para que su clase sea tenida en cuenta en la verificación de
-* dependencias deberá registrar la utilizando el método REGISTRAR de la
-* clase LCL_MANEJADOR_TIPOS_OBJETO. Un ejemplo:
-*
-*  LV_MANEJADOR_TIPOS = LCL_MANEJADOR_TIPOS_OBJETO=>GET_INSTANCE( ).
-*
-*  LV_MANEJADOR_TIPOS->REGISTRAR(
-*    IV_PGMID = 'R3TR'
-*    IV_OBJECT = 'PROG'
-*    IV_CLASE_ASOCIADA = 'LCL_PROGRAMA'
-*    ).
-***********************************************************************
 CLASS LCL_OBJETO_ORDEN DEFINITION INHERITING FROM LCL_VERIFICABLE.
 
   PUBLIC SECTION.
@@ -295,12 +303,69 @@ CLASS LCL_PROGRAMA DEFINITION INHERITING FROM LCL_OBJETO_ORDEN.
 
     METHODS:
 
+      CONSTRUCTOR
+        IMPORTING
+          IS_IDENTIFICACION_OBJETO TYPE TY_S_IDENTIFICACION_OBJETO,
+
+      SELECT_DEPENDENCIAS REDEFINITION,
+
+      GET_LINEA_TREE REDEFINITION.
+
+  PROTECTED SECTION.
+
+    DATA:
+      LV_NOMBRE_PROGRAMA TYPE E071-OBJ_NAME.
+
+ENDCLASS.                    "LCL_PROGRAMA DEFINITION
+
+***********************************************************************
+* Clase que modela un grupo de funciones.
+***********************************************************************
+CLASS LCL_GRUPO_FUNCIONES DEFINITION INHERITING FROM LCL_PROGRAMA.
+
+  PUBLIC SECTION.
+
+    METHODS:
+
+      CONSTRUCTOR
+        IMPORTING
+          IS_IDENTIFICACION_OBJETO TYPE TY_S_IDENTIFICACION_OBJETO,
+
       SELECT_DEPENDENCIAS REDEFINITION,
 
       GET_LINEA_TREE REDEFINITION.
 
 ENDCLASS.                    "LCL_PROGRAMA DEFINITION
 
+CLASS LCL_FUNCION DEFINITION INHERITING FROM LCL_OBJETO_ORDEN.
+
+  PUBLIC SECTION.
+
+    METHODS:
+
+      GET_LINEA_TREE REDEFINITION.
+
+ENDCLASS.
+
+CLASS LCL_DOMINIO DEFINITION INHERITING FROM LCL_OBJETO_ORDEN.
+
+  PUBLIC SECTION.
+
+    METHODS:
+
+      GET_LINEA_TREE REDEFINITION.
+
+ENDCLASS.
+
+CLASS LCL_ELEMENTO_DATOS DEFINITION INHERITING FROM LCL_OBJETO_ORDEN.
+
+  PUBLIC SECTION.
+
+    METHODS:
+
+      GET_LINEA_TREE REDEFINITION.
+
+ENDCLASS.
 ***********************************************************************
 * Clase que modela una tabla de diccionario.
 ***********************************************************************
@@ -800,7 +865,6 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
   ENDMETHOD.
 
 ***********************************************************************
-* @doc:
 * Este método es el responsable de devolver todos los tipos de
 * objeto posibles para un objeto dado, necesario para poder
 * hacer la verificación total. Esto es necesario porque un mismo
@@ -894,6 +958,14 @@ ENDCLASS.                    "LCL_OBJETO_ORDEN IMPLEMENTATION
 *----------------------------------------------------------------------*
 CLASS LCL_PROGRAMA IMPLEMENTATION.
 
+  METHOD CONSTRUCTOR.
+*        IMPORTING
+*          IS_IDENTIFICACION_OBJETO TYPE TY_S_IDENTIFICACION_OBJETO,
+    SUPER->CONSTRUCTOR( IS_IDENTIFICACION_OBJETO ).
+
+    ME->LV_NOMBRE_PROGRAMA = ME->LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+  ENDMETHOD.
+
   METHOD SELECT_DEPENDENCIAS.
 
     FIELD-SYMBOLS:
@@ -910,8 +982,7 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
     FROM D010TAB
     INTO TABLE LT_TABNAME
     WHERE
-      MASTER EQ ME->LS_IDENTIFICACION_OBJETO-OBJ_NAME AND
-* @todo Verificar includes de grupos de funciones
+      MASTER EQ ME->LV_NOMBRE_PROGRAMA AND
       ( TABNAME LIKE 'Z%' OR
       TABNAME LIKE 'Y%' ).
 
@@ -927,17 +998,27 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
 
     ENDLOOP.
 
-    " @todo: Agregar como dependencias a los includes:
-    " Tabla D010INC: A partir de MASTER se obtiene el include.
+    " Agrega como dependencias a los includes.
     SELECT INCLUDE
     FROM D010INC
     INTO TABLE LT_INCLUDE
     WHERE
-      MASTER EQ ME->LS_IDENTIFICACION_OBJETO-OBJ_NAME AND
+      MASTER EQ ME->LV_NOMBRE_PROGRAMA AND
       ( INCLUDE LIKE 'Z%' OR
-      INCLUDE LIKE 'Y%' ).
+      INCLUDE LIKE 'Y%' OR
+      INCLUDE LIKE 'LZ%' ).
+
+    " En las pruebas se detectó la obtención de duplicados, por tanto
+    " se eliminan.
+    SORT LT_INCLUDE.
+    DELETE ADJACENT DUPLICATES FROM LT_INCLUDE.
 
     LOOP AT LT_INCLUDE ASSIGNING <LV_INCLUDE>.
+
+* Se excluyen includes correspondientes a módulos de función.
+      IF <LV_INCLUDE> CP 'LZ*U++' OR <LV_INCLUDE> CP 'LY*U++'.
+        CONTINUE.
+      ENDIF.
 
       LCL_OBJETO_ORDEN=>FACTORY_COLLECTION_BY_CLASS(
         EXPORTING
@@ -949,8 +1030,13 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
 
     ENDLOOP.
 
+    " @todo: Agregar tipo de objeto dynpro
+    " Tabla D020S: A partir de PROG se obtienen todos los dynpros (DNUM).
+
     " @todo: Agregar como dependencias el programa padre, en caso
-    " de ser un include. (Ver si aplica).
+    " de ser un include. Esto sería necesario porque las dependencias
+    " solo se pueden obtener a partir del programa principal y NO a
+    " partir de include
 
   ENDMETHOD.                    "SELECT_DEPENDENCIAS
 
@@ -963,6 +1049,64 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.                    "LCL_PROGRAMA IMPLEMENTATION
+
+CLASS LCL_GRUPO_FUNCIONES IMPLEMENTATION.
+
+  METHOD CONSTRUCTOR.
+*        IMPORTING
+*          IS_IDENTIFICACION_OBJETO TYPE TY_S_IDENTIFICACION_OBJETO,
+    SUPER->CONSTRUCTOR( IS_IDENTIFICACION_OBJETO ).
+
+    CONCATENATE
+      'SAPL'
+      ME->LV_NOMBRE_PROGRAMA
+    INTO
+      ME->LV_NOMBRE_PROGRAMA.
+
+  ENDMETHOD.
+
+  METHOD SELECT_DEPENDENCIAS.
+
+    FIELD-SYMBOLS:
+      <LV_FUNCNAME> TYPE TFDIR-FUNCNAME.
+
+    DATA:
+      LT_FUNCNAME TYPE STANDARD TABLE OF TFDIR-FUNCNAME.
+
+    SUPER->SELECT_DEPENDENCIAS( ).
+
+    " Se agrega las funciones del grupo de función.
+    SELECT FUNCNAME
+    FROM TFDIR
+    INTO TABLE LT_FUNCNAME
+    WHERE
+      PNAME EQ ME->LV_NOMBRE_PROGRAMA AND
+      ( FUNCNAME LIKE 'Z%' OR
+      FUNCNAME LIKE 'Y%' ).
+
+    LOOP AT LT_FUNCNAME ASSIGNING <LV_FUNCNAME>.
+
+      LCL_OBJETO_ORDEN=>FACTORY_COLLECTION_BY_CLASS(
+        EXPORTING
+          IV_CLASS_NAME = 'LCL_FUNCION'
+          IV_OBJ_NAME = <LV_FUNCNAME>
+        CHANGING
+          CT_VERIFICABLES = ME->LT_DEPENDENCIAS
+        ).
+
+    ENDLOOP.
+
+  ENDMETHOD.                    "SELECT_DEPENDENCIAS
+
+  METHOD GET_LINEA_TREE.
+*        RETURNING
+*          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+    LS_RESULT-TIPO = 'Grupo de funciones'.
+    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+
+  ENDMETHOD.
+
+ENDCLASS.
 
 *----------------------------------------------------------------------*
 *       CLASS LCL_TABLA IMPLEMENTATION
@@ -1006,7 +1150,7 @@ CLASS LCL_TABLA IMPLEMENTATION.
 
         LCL_OBJETO_ORDEN=>FACTORY_COLLECTION_BY_CLASS(
           EXPORTING
-            IV_CLASS_NAME = 'LCL_OBJETO_ORDEN'
+            IV_CLASS_NAME = 'LCL_ELEMENTO_DATOS'
             IV_OBJ_NAME = <LS_DD03L>-ROLLNAME
           CHANGING
             CT_VERIFICABLES = ME->LT_DEPENDENCIAS
@@ -1018,7 +1162,7 @@ CLASS LCL_TABLA IMPLEMENTATION.
 
         LCL_OBJETO_ORDEN=>FACTORY_COLLECTION_BY_CLASS(
           EXPORTING
-            IV_CLASS_NAME = 'LCL_OBJETO_ORDEN'
+            IV_CLASS_NAME = 'LCL_DOMINIO'
             IV_OBJ_NAME = <LS_DD03L>-DOMNAME
           CHANGING
             CT_VERIFICABLES = ME->LT_DEPENDENCIAS
@@ -1041,18 +1185,57 @@ CLASS LCL_TABLA IMPLEMENTATION.
 
 ENDCLASS.                    "LCL_TABLA IMPLEMENTATION
 
-* @todo: Agregar tipo de objeto dynpro
-" Tabla D020S: A partir de PROG se obtienen todos los dynpros (DNUM).
+CLASS LCL_FUNCION IMPLEMENTATION.
+
+* @todo Ver si se debería agregar al grupo de función como dependencia,
+* ya que las dependencias de tablas e includes solo se pueden obtener a
+* partir del grupo de función.
+
+  METHOD GET_LINEA_TREE.
+*        RETURNING
+*          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+    LS_RESULT-TIPO = 'Función'.
+    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS LCL_DOMINIO IMPLEMENTATION.
+
+  METHOD GET_LINEA_TREE.
+*        RETURNING
+*          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+    LS_RESULT-TIPO = 'Dominio'.
+    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS LCL_ELEMENTO_DATOS IMPLEMENTATION.
+
+  METHOD GET_LINEA_TREE.
+*        RETURNING
+*          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+    LS_RESULT-TIPO = 'Elemento de datos'.
+    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+
+  ENDMETHOD.
+
+ENDCLASS.
 
 TABLES:
   E071.
 
 PARAMETERS:
-  P_TRKORR TYPE E070-TRKORR,
-  P_GETTAR TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_FALSE.
+  P_TRKORR TYPE E070-TRKORR,  "Orden de transporte
+  P_GETTAR TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_FALSE. "Obtener tareas
 
 SELECT-OPTIONS:
-  S_OBJNAM FOR E071-OBJ_NAME.
+  S_OBJNAM FOR E071-OBJ_NAME. "Nombre de objeto en órdenes de transporte
+
+* @todo Agregar la opción para que solo se visualicen las órdenes de transporte en el arbol de dependencias.
 
 DATA:
       LV_ORDEN_TRANSPORTE TYPE REF TO LCL_ORDEN_TRANSPORTE,
@@ -1077,13 +1260,13 @@ INITIALIZATION.
   LV_MANEJADOR_TIPOS->REGISTRAR(
     IV_PGMID = 'R3TR'
     IV_OBJECT = 'DTEL'
-    IV_CLASE_ASOCIADA = 'LCL_OBJETO_ORDEN'
+    IV_CLASE_ASOCIADA = 'LCL_ELEMENTO_DATOS'
     ).
 
   LV_MANEJADOR_TIPOS->REGISTRAR(
     IV_PGMID = 'R3TR'
     IV_OBJECT = 'DOMA'
-    IV_CLASE_ASOCIADA = 'LCL_OBJETO_ORDEN'
+    IV_CLASE_ASOCIADA = 'LCL_DOMINIO'
     ).
 
   LV_MANEJADOR_TIPOS->REGISTRAR(
@@ -1102,6 +1285,18 @@ INITIALIZATION.
     IV_PGMID = 'LIMU'
     IV_OBJECT = 'TABD'
     IV_CLASE_ASOCIADA = 'LCL_TABLA'
+    ).
+
+  LV_MANEJADOR_TIPOS->REGISTRAR(
+    IV_PGMID = 'R3TR'
+    IV_OBJECT = 'FUGR'
+    IV_CLASE_ASOCIADA = 'LCL_GRUPO_FUNCIONES'
+    ).
+
+  LV_MANEJADOR_TIPOS->REGISTRAR(
+    IV_PGMID = 'LIMU'
+    IV_OBJECT = 'FUNC'
+    IV_CLASE_ASOCIADA = 'LCL_FUNCION'
     ).
 
 START-OF-SELECTION.
