@@ -93,7 +93,8 @@ CLASS LCL_FILTROS DEFINITION.
 
     CLASS-DATA:
       LR_OBJ_NAME TYPE RANGE OF E071-OBJ_NAME,
-      LV_OBTENER_TAREAS_ORDENES TYPE ABAP_BOOL.
+      LV_OBTENER_TAREAS_ORDENES TYPE ABAP_BOOL,
+      LV_LISTAR_SOLO_ORDENES TYPE ABAP_BOOL.
 
 ENDCLASS.                    "LCL_FILTROS DEFINITION
 
@@ -487,18 +488,50 @@ CLASS lcl_alv_tree IMPLEMENTATION.
     DATA:
       Lr_node TYPE REF TO cl_salv_node,
       LS_LINEA_TREE TYPE TY_S_LINEA_TREE,
-      LV_CLAVE type salv_de_node_key.
+      LV_CLAVE type salv_de_node_key,
+      LV_AGREGAR TYPE ABAP_BOOL.
 
-    LR_node = IR_nodes->add_node(
-      related_node = IV_CLAVE_NODO_PADRE
-      relationship = cl_gui_column_tree=>relat_LAST_child
-      ).
+    " En caso que haya que listar solo ordenes...
+    IF LCL_FILTROS=>LV_LISTAR_SOLO_ORDENES EQ ABAP_TRUE.
 
-    LS_LINEA_TREE = IR_VERIFICABLE->GET_LINEA_TREE( ).
+      " En caso de tratarse de una orden...
+      IF CL_LCR_UTIL=>INSTANCEOF(
+        OBJECT = IR_VERIFICABLE
+        CLASS = 'LCL_ORDEN_TRANSPORTE' ) EQ ABAP_TRUE.
 
-    LR_node->set_data_row( LS_LINEA_TREE ).
+        LV_AGREGAR = ABAP_TRUE.
 
-    LV_CLAVE = LR_node->get_key( ).
+      ELSE.
+
+        LV_AGREGAR = ABAP_FALSE.
+
+      ENDIF.
+
+    " Sino se agrega siempre...
+    ELSE.
+
+      LV_AGREGAR = ABAP_TRUE.
+
+    ENDIF.
+
+    IF LV_AGREGAR EQ ABAP_TRUE.
+
+      LR_node = IR_nodes->add_node(
+        related_node = IV_CLAVE_NODO_PADRE
+        relationship = cl_gui_column_tree=>relat_LAST_child
+        ).
+
+      LS_LINEA_TREE = IR_VERIFICABLE->GET_LINEA_TREE( ).
+
+      LR_node->set_data_row( LS_LINEA_TREE ).
+
+      LV_CLAVE = LR_node->get_key( ).
+
+    ELSE.
+
+      LV_CLAVE = IV_CLAVE_NODO_PADRE.
+
+    ENDIF.
 
     LOOP AT IR_VERIFICABLE->LT_DEPENDENCIAS ASSIGNING <LR_VERIFICABLE>.
 
@@ -1228,18 +1261,54 @@ ENDCLASS.
 TABLES:
   E071.
 
-PARAMETERS:
-  P_TRKORR TYPE E070-TRKORR,  "Orden de transporte
-  P_GETTAR TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_FALSE. "Obtener tareas
+SELECTION-SCREEN BEGIN OF BLOCK FILTROS WITH FRAME TITLE TEXT-B01.
+  PARAMETERS:
+    P_TRKORR TYPE E070-TRKORR.  "Orden de transporte
+  SELECT-OPTIONS:
+    S_OBJNAM FOR E071-OBJ_NAME. "Nombre de objeto en órdenes de transporte
+SELECTION-SCREEN END OF BLOCK FILTROS.
 
-SELECT-OPTIONS:
-  S_OBJNAM FOR E071-OBJ_NAME. "Nombre de objeto en órdenes de transporte
+SELECTION-SCREEN BEGIN OF BLOCK EJECUCION WITH FRAME TITLE TEXT-B02.
+  PARAMETERS:
+    P_LISORD TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_TRUE, "Mostrar solo órdenes
+    P_LNOTRA TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_TRUE, "Mostrar solo NO trans. a:
+    P_SYSTEM TYPE TMSCSYS-SYSNAM,
+    P_GETTAR TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_FALSE. "Obtener tareas
+SELECTION-SCREEN END OF BLOCK EJECUCION.
 
 * @todo Agregar la opción para que solo se visualicen las órdenes de transporte en el arbol de dependencias.
 
 DATA:
       LV_ORDEN_TRANSPORTE TYPE REF TO LCL_ORDEN_TRANSPORTE,
       LV_MANEJADOR_TIPOS TYPE REF TO LCL_MANEJADOR_TIPOS_OBJETO.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR P_SYSTEM.
+
+  CALL FUNCTION 'TMS_UI_F4_SYSTEMS'
+*   EXPORTING
+*     IV_DOMAIN                  =
+*     IV_LOCAL_DOMAIN            =
+*     IV_PLUS_VIRTUAL            =
+*     IV_PLUS_EXTERNAL           =
+*     IV_PLUS_NONABAP            = ' '
+*     IV_ONLY_ACTIVE             = 'X'
+*     IV_ALL_SYSTEMS             =
+*     IV_LOCAL_WBO_SYSTEMS       =
+*     IV_SHOW_DOMAIN             =
+*     IV_DISPLAY                 =
+*     IV_TITLE                   =
+*     IT_SYSTEMS                 =
+*   IMPORTING
+*     EV_VIRTUAL                 =
+*     EV_EXTERNAL                =
+*   TABLES
+*     TT_EXCLUDE                 =
+    CHANGING
+      CV_SYSTEM                  = P_SYSTEM
+*     CV_SYSTEM_TEXT             =
+*     CV_DOMAIN                  =
+            .
+
 
 INITIALIZATION.
 
@@ -1303,6 +1372,7 @@ START-OF-SELECTION.
 
   LCL_FILTROS=>LR_OBJ_NAME = S_OBJNAM[].
   LCL_FILTROS=>LV_OBTENER_TAREAS_ORDENES = P_GETTAR.
+  LCL_FILTROS=>LV_LISTAR_SOLO_ORDENES = P_LISORD.
 
   CREATE OBJECT LV_ORDEN_TRANSPORTE
     EXPORTING
