@@ -2,76 +2,9 @@
 *& Report  Z_DEPENDENCY_CHECK
 *& Autor: Juan Sebastian Goldberg
 *&---------------------------------------------------------------------*
-*&
+*& Documenatción: Ver README en https://github.com/agdc-deloitte/depcheck
 *&
 *&---------------------------------------------------------------------*
-
-* Ejemplos de uso
-* ---------------
-*
-* Eejemplo 1
-* ----------
-* Entrada:
-* Se ingresa como parámetro la orden de transporte O1.
-* Se piden solo objetos Z.
-* Se piden órdenes de transporte que no hayan sido importadas al
-* ambiente A1.
-*
-* Salida: Se muestra arbol de dependencias, donde la raiz del arbol es
-* la orden de transporte O1, para dicha orden se obtienen los objetos
-* dependientes (hijos de nivel 1), para cada objeto se obtienen sus
-* ordenes y objetos dependientes (hijos nivel 2), y se sigue en forma
-* recursiva para cada uno hasta que no se presenten dependencias.
-* En todos los casos se restringirá para que sean recuperados objetos
-* Z.
-* En todos los casos se restringirá para que sean recuperadas órdenes
-* de transporte que no hayan sido transportadas al ambiente A1.
-
-***********************************************************************
-* @doc:
-* ¿Cómo agregar nuevos tipos de objeto para ser verificados?
-* La clase LCL_OBJETO_ORDEN debe ser heredada en caso de querer agregar
-* un nuevo tipo de objeto a ser verificado por este programa.
-* Es tan simple como heredar de la clase LCL_OBJETO_ORDEN y redefinir
-* el método SELECT_DEPENDENCIAS. En la redefinición de dicho método
-* se debería llamar a super->SELECT_DEPENDENCIAS( ) y luego agregar al
-* atributo me->LT_DEPENDENCIAS las dependencias que tenga el nuevo
-* tipo de objeto.
-* Recuerde que para identificar el objeto que está tratando cuenta
-* con el atributo me->LS_IDENTIFICACION_OBJETO-OBJ_NAME, que
-* contendrá el nombre de, por ejemplo el progra, tabla, dominio, etc.
-*
-* Para agregar instancias a me->LT_DEPENDENCIAS debería usar el método
-* FACTORY_COLLECTION_BY_CLASS que simplemente pasando el nombre del
-* objeto a agregar y la clase, se agregarán las instancias que
-* correspondan en me->LT_DEPENDENCIAS. Esto es posible gracias al
-* registro hecho de cada clase (ver más abajo).
-*
-* Un ejemplo de clase heredera es la clase LCL_PROGRAMA que tal cual
-* está aqui documentado redefine simplemente el método
-* SELECT_DEPENDENCIAS.
-*
-* IMPORTANTE: Si redefine el constructor no cambiar la firma!!! La
-* firma debe ser la misma que la definida en la clase LCL_OBJETO_ORDEN.
-*
-* Por último para que el nuevo tipo de objeto se muestre correctamente
-* en el ALV tree debería redefinir el método GET_LINEA_TREE,
-* simplemente indicando una descripción para el tipo de objeto y su
-* nombre.
-*
-* Para que su clase sea tenida en cuenta en la verificación de
-* dependencias deberá registrarla utilizando el método REGISTRAR de la
-* clase LCL_MANEJADOR_TIPOS_OBJETO. Un ejemplo:
-*
-*  LV_MANEJADOR_TIPOS = LCL_MANEJADOR_TIPOS_OBJETO=>GET_INSTANCE( ).
-*
-*  LV_MANEJADOR_TIPOS->REGISTRAR(
-*    IV_PGMID = 'R3TR'
-*    IV_OBJECT = 'PROG'
-*    IV_CLASE_ASOCIADA = 'LCL_PROGRAMA'
-*    ).
-*
-***********************************************************************
 
 REPORT  Z_DEPENDENCY_CHECK.
 
@@ -95,7 +28,7 @@ CLASS LCL_FILTROS DEFINITION.
       LR_OBJ_NAME TYPE RANGE OF E071-OBJ_NAME,
       LV_OBTENER_TAREAS_ORDENES TYPE ABAP_BOOL,
       LV_LISTAR_SOLO_ORDENES TYPE ABAP_BOOL,
-      LV_VALIDA_ORDENES_EN_DESTINO TYPE ABAP_BOOL,
+      LV_MOSTRAR_SOLO_ORD_NO_TRANS TYPE ABAP_BOOL,
       LV_DESTINO_RFC TYPE EDI_LOGDES.
 
 ENDCLASS.                    "LCL_FILTROS DEFINITION
@@ -110,7 +43,7 @@ CLASS lcl_alv_tree DEFINITION.
     TYPES:
       BEGIN OF TY_S_LINEA_TREE,
         TIPO TYPE STRING,
-        NOMBRE TYPE STRING,
+*        NOMBRE TYPE STRING,
       END OF TY_S_LINEA_TREE.
 
 
@@ -157,7 +90,11 @@ CLASS LCL_VERIFICABLE DEFINITION ABSTRACT FRIENDS LCL_ALV_TREE.
 
       GET_LINEA_TREE ABSTRACT
         RETURNING
-          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
+          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE,
+
+      GET_TEXT ABSTRACT
+        RETURNING
+          VALUE(EV_RESULT) TYPE LVC_VALUE.
 
 
   PROTECTED SECTION.
@@ -183,7 +120,9 @@ CLASS LCL_ORDEN_TRANSPORTE DEFINITION INHERITING FROM LCL_VERIFICABLE.
 
       GET_KEY REDEFINITION,
 
-      GET_LINEA_TREE REDEFINITION.
+      GET_LINEA_TREE REDEFINITION,
+
+      GET_TEXT REDEFINITION.
 
     CLASS-METHODS:
 
@@ -193,9 +132,6 @@ CLASS LCL_ORDEN_TRANSPORTE DEFINITION INHERITING FROM LCL_VERIFICABLE.
           IV_DESTINO_RFC TYPE EDI_LOGDES
         RETURNING
           VALUE(LV_RESULT) TYPE ABAP_BOOL.
-
-
-  PROTECTED SECTION.
 
     DATA:
           LV_NUMERO_ORDEN TYPE E070-TRKORR.
@@ -230,7 +166,9 @@ CLASS LCL_OBJETO_ORDEN DEFINITION INHERITING FROM LCL_VERIFICABLE.
 
       SELECT_DEPENDENCIAS REDEFINITION,
 
-      GET_LINEA_TREE REDEFINITION.
+      GET_LINEA_TREE REDEFINITION,
+
+      GET_TEXT REDEFINITION.
 
     CLASS-METHODS:
 
@@ -499,18 +437,42 @@ CLASS lcl_alv_tree IMPLEMENTATION.
     DATA:
       Lr_node TYPE REF TO cl_salv_node,
       LS_LINEA_TREE TYPE TY_S_LINEA_TREE,
+      LV_TEXT TYPE LVC_VALUE,
       LV_CLAVE type salv_de_node_key,
-      LV_AGREGAR TYPE ABAP_BOOL.
+      LV_AGREGAR TYPE ABAP_BOOL,
+      LR_ORDEN TYPE REF TO LCL_ORDEN_TRANSPORTE.
 
     " En caso que haya que listar solo ordenes...
-    IF LCL_FILTROS=>LV_LISTAR_SOLO_ORDENES EQ ABAP_TRUE.
+    IF LCL_FILTROS=>LV_LISTAR_SOLO_ORDENES EQ ABAP_TRUE OR
+      LCL_FILTROS=>LV_MOSTRAR_SOLO_ORD_NO_TRANS EQ ABAP_TRUE.
 
       " En caso de tratarse de una orden...
       IF CL_LCR_UTIL=>INSTANCEOF(
         OBJECT = IR_VERIFICABLE
         CLASS = 'LCL_ORDEN_TRANSPORTE' ) EQ ABAP_TRUE.
 
-        LV_AGREGAR = ABAP_TRUE.
+        " Si solo se desean listar las órdenes que no se encuentran en
+        " un cierto destino...
+        IF LCL_FILTROS=>LV_MOSTRAR_SOLO_ORD_NO_TRANS EQ ABAP_TRUE.
+
+          LR_ORDEN ?= IR_VERIFICABLE.
+
+          " Si la orden ya se encuentra en dicho destino...
+          IF LCL_ORDEN_TRANSPORTE=>ORDEN_EXISTE_EN_DESTINO(
+            IV_ORDEN = LR_ORDEN->LV_NUMERO_ORDEN
+            IV_DESTINO_RFC = LCL_FILTROS=>LV_DESTINO_RFC
+            ) EQ ABAP_TRUE.
+            " ...no se muestra.
+            LV_AGREGAR = ABAP_FALSE.
+          ELSE.
+            LV_AGREGAR = ABAP_TRUE.
+          ENDIF.
+
+        ELSE.
+
+          LV_AGREGAR = ABAP_TRUE.
+
+        ENDIF.
 
       ELSE.
 
@@ -535,6 +497,10 @@ CLASS lcl_alv_tree IMPLEMENTATION.
       LS_LINEA_TREE = IR_VERIFICABLE->GET_LINEA_TREE( ).
 
       LR_node->set_data_row( LS_LINEA_TREE ).
+
+      LV_TEXT = IR_VERIFICABLE->GET_TEXT( ).
+
+      LR_node->SET_TEXT( LV_TEXT ).
 
       LV_CLAVE = LR_node->get_key( ).
 
@@ -847,7 +813,13 @@ CLASS LCL_ORDEN_TRANSPORTE IMPLEMENTATION.
 *        RETURNING
 *          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
     LS_RESULT-TIPO = 'Orden de transporte'.
-    LS_RESULT-NOMBRE = LV_NUMERO_ORDEN.
+  ENDMETHOD.
+
+  METHOD GET_TEXT.
+*        RETURNING
+*          VALUE(EV_RESULT) TYPE LVC_VALUE.
+
+    EV_RESULT = LV_NUMERO_ORDEN.
   ENDMETHOD.
 
   METHOD ORDEN_EXISTE_EN_DESTINO.
@@ -1007,18 +979,6 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
     " dependencias...
     LOOP AT LT_ORDENES ASSIGNING <LV_ORDEN>.
 
-      " Se verifica si solo se deben chequear las órdenes que no
-      " existen en el destino.
-      IF LCL_FILTROS=>LV_VALIDA_ORDENES_EN_DESTINO EQ ABAP_FALSE.
-
-        " Se verifica que la orden no exista en el destino
-        CHECK LCL_ORDEN_TRANSPORTE=>ORDEN_EXISTE_EN_DESTINO(
-          IV_ORDEN = <LV_ORDEN>
-          IV_DESTINO_RFC = LCL_FILTROS=>LV_DESTINO_RFC
-          ) EQ ABAP_FALSE.
-
-      ENDIF.
-
       APPEND INITIAL LINE TO ME->LT_DEPENDENCIAS ASSIGNING
         <LV_DEPENDENCIA>.
 
@@ -1036,9 +996,16 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
 *        RETURNING
 *          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
     LS_RESULT-TIPO = 'Objeto orden'.
-    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
 
   ENDMETHOD.
+
+  METHOD GET_TEXT.
+*        RETURNING
+*          VALUE(EV_RESULT) TYPE LVC_VALUE.
+
+    EV_RESULT = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
+  ENDMETHOD.
+
 
 ENDCLASS.                    "LCL_OBJETO_ORDEN IMPLEMENTATION
 
@@ -1135,7 +1102,6 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
 *        RETURNING
 *          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
     LS_RESULT-TIPO = 'Programa'.
-    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
 
   ENDMETHOD.
 
@@ -1193,7 +1159,6 @@ CLASS LCL_GRUPO_FUNCIONES IMPLEMENTATION.
 *        RETURNING
 *          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
     LS_RESULT-TIPO = 'Grupo de funciones'.
-    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
 
   ENDMETHOD.
 
@@ -1268,7 +1233,6 @@ CLASS LCL_TABLA IMPLEMENTATION.
 *        RETURNING
 *          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
     LS_RESULT-TIPO = 'Tabla'.
-    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
 
   ENDMETHOD.
 
@@ -1284,7 +1248,6 @@ CLASS LCL_FUNCION IMPLEMENTATION.
 *        RETURNING
 *          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
     LS_RESULT-TIPO = 'Función'.
-    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
 
   ENDMETHOD.
 
@@ -1296,7 +1259,6 @@ CLASS LCL_DOMINIO IMPLEMENTATION.
 *        RETURNING
 *          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
     LS_RESULT-TIPO = 'Dominio'.
-    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
 
   ENDMETHOD.
 
@@ -1308,7 +1270,6 @@ CLASS LCL_ELEMENTO_DATOS IMPLEMENTATION.
 *        RETURNING
 *          VALUE(LS_RESULT) TYPE LCL_ALV_TREE=>TY_S_LINEA_TREE.
     LS_RESULT-TIPO = 'Elemento de datos'.
-    LS_RESULT-NOMBRE = LS_IDENTIFICACION_OBJETO-OBJ_NAME.
 
   ENDMETHOD.
 
@@ -1327,27 +1288,29 @@ SELECTION-SCREEN END OF BLOCK FILTROS.
 SELECTION-SCREEN BEGIN OF BLOCK EJECUCION WITH FRAME TITLE TEXT-B02.
   PARAMETERS:
     P_LISORD TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_TRUE, "Mostrar solo órdenes
-    P_VALEXT TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_FALSE, "Verificar órdenes ya transportadas a destino
+*    P_VALEXT TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_FALSE, "Mostrar solo órdenes NO transp. a:
+    P_MNOTRA TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_FALSE, "Mostrar solo ord. NO trans. a:
     P_RFCDST TYPE EDI_LOGDES, "Destino RFC (del destino)
-    P_GETTAR TYPE ABAP_BOOL AS CHECKBOX DEFAULT ABAP_FALSE. "Obtener tareas
+    P_GETTAR TYPE ABAP_BOOL NO-DISPLAY DEFAULT ABAP_FALSE. "Obtener tareas
 SELECTION-SCREEN END OF BLOCK EJECUCION.
 
 DATA:
       LV_ORDEN_TRANSPORTE TYPE REF TO LCL_ORDEN_TRANSPORTE,
       LV_MANEJADOR_TIPOS TYPE REF TO LCL_MANEJADOR_TIPOS_OBJETO.
 
-AT SELECTION-SCREEN.
-
-  CHECK P_VALEXT EQ ABAP_FALSE.
-
-  IF LCL_ORDEN_TRANSPORTE=>ORDEN_EXISTE_EN_DESTINO(
-    IV_ORDEN = P_TRKORR
-    IV_DESTINO_RFC = P_RFCDST
-    ) EQ ABAP_TRUE.
-
-    MESSAGE 'La orden de transporte ya existe en el destino seleccionado'(001) TYPE 'E'.
-
-  ENDIF.
+*AT SELECTION-SCREEN.
+*
+**  CHECK P_VALEXT EQ ABAP_FALSE.
+*  CHECK P_MNOTRA EQ ABAP_TRUE.
+*
+*  IF LCL_ORDEN_TRANSPORTE=>ORDEN_EXISTE_EN_DESTINO(
+*    IV_ORDEN = P_TRKORR
+*    IV_DESTINO_RFC = P_RFCDST
+*    ) EQ ABAP_TRUE.
+*
+*    MESSAGE 'La orden de transporte ya existe en el destino seleccionado'(001) TYPE 'E'.
+*
+*  ENDIF.
 
 
 AT SELECTION-SCREEN ON VALUE-REQUEST FOR P_RFCDST.
@@ -1439,7 +1402,7 @@ START-OF-SELECTION.
   LCL_FILTROS=>LR_OBJ_NAME = S_OBJNAM[].
   LCL_FILTROS=>LV_OBTENER_TAREAS_ORDENES = P_GETTAR.
   LCL_FILTROS=>LV_LISTAR_SOLO_ORDENES = P_LISORD.
-  LCL_FILTROS=>LV_VALIDA_ORDENES_EN_DESTINO = P_VALEXT.
+  LCL_FILTROS=>LV_MOSTRAR_SOLO_ORD_NO_TRANS = P_MNOTRA.
   LCL_FILTROS=>LV_DESTINO_RFC = P_RFCDST.
 
   CREATE OBJECT LV_ORDEN_TRANSPORTE
