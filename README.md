@@ -10,8 +10,9 @@ objetivo obtener dependencias entre órdenes de transporte y objetos de una orden
 Su funcionamiento es el siguiente:
 * Se indica una orden de transporte a analizar.
 * Se obtienen los objetos de dicha orden de transporte.
-* Para cada objeto se verifica en qué ordenes de transporte existe y qué objetos
-  tiene como dependencias.
+* Para cada objeto se verifica qué objetos tiene como dependencias y en qué 
+  ordenes de transporte existe (esto último depende del parámetro "No sel. ord. 
+  en verif. depend.").
 * Luego se toman dichas órdenes y dichos objetos y se continúa el análisis en 
   forma recursiva.
 * Por último se muestra un arbol con todas las dependencias obtenidas.
@@ -24,6 +25,12 @@ Es importante hacer las siguientes aclaraciones:
 * Puede ocurrir que dos nodos A y B, no dependientes, tengan una misma 
   dependencia C. Tener en cuenta que las dependencias de C se mostrarán una 
   única vez, en la rama de A o en la rama de B.
+* Como los objetos de una orden, en varios casos, se pueden incluir de distintas
+  formas, cada objeto va a aparecer tantas veces en el arbol, como formas existan
+  para incluirlo en una orden. Por ejemplo, una tabla puede aparecer en una orden
+  con la clave PGMID = 'R3TR' OBJECT = 'TABL', pero tambien puede aparecer con la
+  clave PGMID = 'LIMU' OBJECT = 'TABD'. Igualmente las dependencias a nivel de 
+  objetos serán analizadas para un solo caso particular.
 
 2) Opciones de ejecución
 ------------------------
@@ -35,6 +42,13 @@ A continuación se explica para que sirve cada uno de los parámetros de selección
   Es recomendable no dejarlo vacío, ya que sino el análisis se extenderá a una 
   gran cantidad de objetos estándares, y causara una gran demora en la ejecución
   del programa.
+* No sel. ord. en verif. depend.: Esta opción es básicamente para no hacer una 
+  selección de órdenes de transporte en el momento de la verificación de 
+  dependencias, de forma de reducir la profundidad del arbol. Es decir, la 
+  verificación de dependencias se realiza solo entre objetos. Luego de haber 
+  realizado la verificación, se agregarán a modo informativo las órdenes de 
+  transporte en las que se encuentra cada objeto, por lo tanto la órdenes de
+  transporte se encontrarán solo como hojas del arbol.
 * Mostrar solo órdenes: Si se encuentra tildado indica que en el arbol que se 
   obtenga como resultado del análisis, se muestren solo las órdenes de transporte, 
   es decir, no se mostrarán objetos como programas, tablas, funciones, etc.
@@ -45,6 +59,8 @@ A continuación se explica para que sirve cada uno de los parámetros de selección
   resultado.
 * Destino RFC: Destino en el cual se verifica si una órden de transporte existe 
   o NO existe en caso de estar tildado el parámetro "Mostrar solo ord. NO trans".
+  Tener en cuenta que para esta verificación se realizan llamadas RFC, lo que 
+  puede reducir sustancialmente la performance del programa.
 
 3) Entendiendo cómo se obtienen las dependencias para cada objeto
 -----------------------------------------------------------------
