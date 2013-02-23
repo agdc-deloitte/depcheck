@@ -48,7 +48,10 @@ A continuación se explica para que sirve cada uno de los parámetros de selección
   verificación de dependencias se realiza solo entre objetos. Luego de haber 
   realizado la verificación, se agregarán a modo informativo las órdenes de 
   transporte en las que se encuentra cada objeto, por lo tanto la órdenes de
-  transporte se encontrarán solo como hojas del arbol.
+  transporte se encontrarán solo como hojas del arbol. IMPORTANTE: Si esta 
+  opción se encuentra destildada, la cantidad de objetos y profundidad del arbol
+  puede crecer considerablemente, por tanto el tiempo de ejecución crecerá 
+  considerablemente.
 * Mostrar solo órdenes: Si se encuentra tildado indica que en el arbol que se 
   obtenga como resultado del análisis, se muestren solo las órdenes de transporte, 
   es decir, no se mostrarán objetos como programas, tablas, funciones, etc.
@@ -61,6 +64,16 @@ A continuación se explica para que sirve cada uno de los parámetros de selección
   o NO existe en caso de estar tildado el parámetro "Mostrar solo ord. NO trans".
   Tener en cuenta que para esta verificación se realizan llamadas RFC, lo que 
   puede reducir sustancialmente la performance del programa.
+
+En general la forma más útil de ejecución será:
+* Orden/Tarea: Orden de transporte que se desea transportar.
+* Nombre de objetos en órdenes: Filtrar por 'Z*' e 'Y*'
+* No sel. ord. en verif. depend.: Tildado.
+* Mostrar solo órdenes: En una primera ejecución Destildado, así se pueden ver 
+  dependencias entre objetos, luego en una segunda ejecución Tildado, así se 
+  tiene noción de las órdenes involucradas.
+* Mostrar solo ord. NO trans. a: Tildado
+* Destino RFC: Destino RFC del ambiente donde se desea realizar el transporte.
 
 3) Entendiendo cómo se obtienen las dependencias para cada objeto
 -----------------------------------------------------------------

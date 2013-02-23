@@ -58,7 +58,13 @@ CLASS lcl_alv_tree DEFINITION.
 
       mostrar_dependencias
         IMPORTING
-          IV_VERIFICABLE TYPE REF TO LCL_VERIFICABLE.
+          IV_VERIFICABLE TYPE REF TO LCL_VERIFICABLE,
+
+      ORDEN_YA_AGREGADA
+        IMPORTING
+          IV_ORDEN TYPE E070-TRKORR
+        RETURNING
+          VALUE(LV_RESULT) TYPE ABAP_BOOL.
 
 ENDCLASS.                    "lcl_alv_tree DEFINITION
 
@@ -366,6 +372,8 @@ CLASS LCL_METODO DEFINITION INHERITING FROM LCL_OBJETO_ORDEN.
 
     METHODS:
 
+      SELECT_DEPENDENCIAS REDEFINITION,
+
       GET_LINEA_TREE REDEFINITION.
 
 ENDCLASS.
@@ -490,7 +498,19 @@ CLASS lcl_alv_tree IMPLEMENTATION.
       " En caso de tratarse de una orden...
       IF CL_LCR_UTIL=>INSTANCEOF(
         OBJECT = IR_VERIFICABLE
-        CLASS = 'LCL_ORDEN_TRANSPORTE' ) NE ABAP_TRUE.
+        CLASS = 'LCL_ORDEN_TRANSPORTE' ) EQ ABAP_TRUE.
+
+        LR_ORDEN ?= IR_VERIFICABLE.
+
+        " En caso de ya haberla agregado no se vuelve a agregar.
+        IF lcl_alv_tree=>ORDEN_YA_AGREGADA(
+          LR_ORDEN->LV_NUMERO_ORDEN ) EQ ABAP_TRUE.
+
+          LV_AGREGAR = ABAP_FALSE.
+
+        ENDIF.
+
+      ELSE.
 
         LV_AGREGAR = ABAP_FALSE.
 
@@ -557,6 +577,29 @@ CLASS lcl_alv_tree IMPLEMENTATION.
         ).
 
     ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD ORDEN_YA_AGREGADA.
+*        IMPORTING
+*          IV_ORDEN TYPE E070-TRKORR
+*        RETURNING
+*          VALUE(LV_RESULT) TYPE ABAP_BOOL.
+
+    STATICS:
+      LT_ORDENES_AGREGADAS TYPE SORTED TABLE OF E070-TRKORR WITH UNIQUE KEY TABLE_LINE.
+
+    READ TABLE LT_ORDENES_AGREGADAS
+    WITH KEY TABLE_LINE = IV_ORDEN
+    TRANSPORTING NO FIELDS
+    BINARY SEARCH.
+
+    IF SY-SUBRC EQ 0.
+      LV_RESULT = ABAP_TRUE.
+      RETURN.
+    ENDIF.
+
+    INSERT IV_ORDEN INTO TABLE LT_ORDENES_AGREGADAS.
 
   ENDMETHOD.
 
@@ -971,15 +1014,34 @@ CLASS LCL_OBJETO_ORDEN IMPLEMENTATION.
 
     EV_RESULT = SUPER->GET_KEY( ).
 
-    CONCATENATE
-      EV_RESULT
-      LS_IDENTIFICACION_OBJETO-PGMID
-      LS_IDENTIFICACION_OBJETO-OBJECT
-      LS_IDENTIFICACION_OBJETO-OBJ_NAME
-    INTO
-      EV_RESULT
-    SEPARATED BY
-      '-'.
+    " En caso de no  seleccionar órdenes...
+    IF LCL_FILTROS=>LV_NO_SELECCIONAR_ORDENES EQ ABAP_TRUE.
+
+      "  solo se tiene en cuenta para la clave la clase y el nombre
+      " del objeto.
+      CONCATENATE
+        EV_RESULT
+        LS_IDENTIFICACION_OBJETO-OBJ_NAME
+      INTO
+        EV_RESULT
+      SEPARATED BY
+        '-'.
+
+    ELSE.
+
+      " Sino se tiene en cuenta la identificación dentro de órdenes de
+      " transporte
+      CONCATENATE
+        EV_RESULT
+        LS_IDENTIFICACION_OBJETO-PGMID
+        LS_IDENTIFICACION_OBJETO-OBJECT
+        LS_IDENTIFICACION_OBJETO-OBJ_NAME
+      INTO
+        EV_RESULT
+      SEPARATED BY
+        '-'.
+
+    ENDIF.
 
   ENDMETHOD.                    "GET_KEY
 
@@ -1157,7 +1219,8 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
       <LV_INCLUDE> TYPE D010INC-INCLUDE.
 
     DATA:
-      LT_INCLUDE TYPE STANDARD TABLE OF D010INC-INCLUDE.
+      LT_INCLUDE TYPE STANDARD TABLE OF D010INC-INCLUDE,
+      LV_MASTER TYPE D010INC-MASTER.
 
     SUPER->SELECT_DEPENDENCIAS( ).
 
@@ -1200,13 +1263,33 @@ CLASS LCL_PROGRAMA IMPLEMENTATION.
 
     ENDLOOP.
 
-    " @todo: Agregar tipo de objeto dynpro
-    " Tabla D020S: A partir de PROG se obtienen todos los dynpros (DNUM).
-
-    " @todo: Agregar como dependencias el programa padre, en caso
+    " Agrega como dependencia el programa padre, en caso
     " de ser un include. Esto sería necesario porque las dependencias
     " solo se pueden obtener a partir del programa principal y NO a
     " partir de include
+    SELECT SINGLE MASTER
+    FROM D010INC
+    INTO LV_MASTER
+    WHERE
+      INCLUDE EQ ME->LV_NOMBRE_PROGRAMA AND
+      ( MASTER LIKE 'Z%' OR
+      MASTER LIKE 'Y%' OR
+      MASTER LIKE 'LZ%' ).
+
+    IF SY-SUBRC EQ 0.
+
+      LCL_OBJETO_ORDEN=>FACTORY_COLLECTION_BY_CLASS(
+        EXPORTING
+          IV_CLASS_NAME = 'LCL_PROGRAMA'
+          IV_OBJ_NAME = LV_MASTER
+        CHANGING
+          CT_VERIFICABLES = ME->LT_DEPENDENCIAS
+        ).
+
+    ENDIF.
+
+    " @todo: Agregar tipo de objeto dynpro
+    " Tabla D020S: A partir de PROG se obtienen todos los dynpros (DNUM).
 
   ENDMETHOD.                    "SELECT_DEPENDENCIAS
 
@@ -1492,6 +1575,26 @@ CLASS LCL_ELEMENTO_DATOS IMPLEMENTATION.
 ENDCLASS.
 
 CLASS LCL_METODO IMPLEMENTATION.
+
+  METHOD SELECT_DEPENDENCIAS.
+
+    DATA:
+      LV_OBJ_NAME TYPE E071-OBJ_NAME.
+
+    SUPER->SELECT_DEPENDENCIAS( ).
+
+    " Se obtiene la clase asociada al método en cuestión.
+    LV_OBJ_NAME = ME->LS_IDENTIFICACION_OBJETO-OBJ_NAME(30).
+
+    LCL_OBJETO_ORDEN=>FACTORY_COLLECTION_BY_CLASS(
+      EXPORTING
+        IV_CLASS_NAME = 'LCL_CLASE'
+        IV_OBJ_NAME = LV_OBJ_NAME
+      CHANGING
+        CT_VERIFICABLES = ME->LT_DEPENDENCIAS
+      ).
+
+  ENDMETHOD.                    "SELECT_DEPENDENCIAS
 
   METHOD GET_LINEA_TREE.
 *        RETURNING
